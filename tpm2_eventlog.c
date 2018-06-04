@@ -174,7 +174,7 @@ static void *tpm2_bios_measurements_start(struct seq_file *m, loff_t *pos)
     }
 
 	/* read over *pos measurements */
-	for (i = 0; i < *pos + 1; i++){//i=1是越过第一条记录; i<*pos+1是为了多检查一条记录，以保证用户获取的当前记录是有效的
+	for (i = 0; i < *pos + 1; i++){//i<*pos+1是为了多检查一条记录，以保证用户获取的当前记录是有效的
 		event = addr;
 		if ((addr + sizeof(tpm2_event) + sizeof(tpm2_digest_values)) < limit){
             digest_values = event->digest;
@@ -265,10 +265,10 @@ static int tpm2_binary_bios_measurements_show(struct seq_file *m, void *v)
 	int i, j, bufsize;
 	tpm2_digest_values *digest_values;
 	tpm2_digest_value *digest_value;
-    for(i = 0; i < sizeof(tpm2_event) + sizeof(tpm2_digest_values); i ++){
+    for(i = 0; i < sizeof(tpm2_event); i ++){
         seq_putc(m, data[i]);
     }
-    data += i;
+    data += i + sizeof(tpm2_digest_values);
     digest_values = event->digest;
     for(j = 0; j < digest_values->count; j ++){
         digest_value = data;
@@ -276,8 +276,9 @@ static int tpm2_binary_bios_measurements_show(struct seq_file *m, void *v)
         if(bufsize <= 0){//出现不支持的算法
             return -1;
         }
-        for(i = 0; i < sizeof(tpm2_digest_value) +  bufsize; i ++){
-            seq_putc(m, data[i]);
+        for(i = sizeof(tpm2_digest_value); i < sizeof(tpm2_digest_value) +  bufsize; i ++){//按照TCPA的格式输出
+            if(j < 1)
+		seq_putc(m, data[i]);
         }
         data += i;
     }
@@ -385,10 +386,11 @@ static int tpm2_ascii_bios_measurements_show(struct seq_file *m, void *v)
 	p += sizeof(tpm2_event) + sizeof(tpm2_digest_values);
     for(i = 0; i < digest_values->count; i ++){
         digest_value = p;
-        seq_printf(m, " %04x ", digest_value->hashAlg);
+        if(i < 1)
+	    seq_printf(m, " %04x ", digest_value->hashAlg);
         len = tpm20_get_hash_buffersize(digest_value->hashAlg);
         //printk("%04x->%d\n", digest_value->hashAlg, len);
-        for(j = 0; j < len; j ++){
+        for(j = 0; i < 1 && j < len; j ++){
             seq_printf(m, "%02x", 0xff & digest_value->hash[j]);
         }
         p += sizeof(tpm2_digest_value) + len;

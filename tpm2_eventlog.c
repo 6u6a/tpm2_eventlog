@@ -404,7 +404,6 @@ static int tpm2_ascii_bios_measurements_show(struct seq_file *m, void *v)
 
 	/* 4th: eventname <= max + \'0' delimiter */
 	seq_printf(m, " %s\n", eventname);
-    seq_printf(m, "\n");
 	kfree(eventname);
 	return 0;
 }

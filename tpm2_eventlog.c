@@ -154,7 +154,7 @@ int tpm20_get_hash_buffersize(u16 hashAlg){
 }
 
 /* returns pointer to start of pos. entry of tcg log */
-static void *tpm2_bios_measurements_start(struct seq_file *m, loff_t *pos)
+static void *tpm2_binary_bios_measurements_start(struct seq_file *m, loff_t *pos)
 {
 	loff_t i, j;
 	u32 bufsize;
@@ -164,12 +164,17 @@ static void *tpm2_bios_measurements_start(struct seq_file *m, loff_t *pos)
 	tpm2_event *event;
 	tpm2_digest_values *digest_values;
 	tpm2_digest_value *digest_value;
-
     //跳过seabios给tpm2.0日志添加的头部，该头部的结构和tcpa的日志记录格式一样
     event = addr;
-    if ((addr + sizeof(struct tcpa_event)) < limit) {
+    if ((addr + sizeof(struct tcpa_event)) + ((struct tcpa_event *)event)->event_size < limit) {
         if (((struct tcpa_event *)event)->event_type == 0 && ((struct tcpa_event *)event)->event_size == 0)
             return NULL;
+		if(*pos == 0){
+			char *data = addr;
+			for(i = 0; i < sizeof(struct tcpa_event) + ((struct tcpa_event *)event)->event_size; i ++){
+				seq_putc(m, data[i]);
+			}
+		}
         addr += sizeof(struct tcpa_event) + ((struct tcpa_event *)event)->event_size;
     }
 
@@ -271,7 +276,7 @@ static int tpm2_binary_bios_measurements_show(struct seq_file *m, void *v)
     data += i;
     digest_values = event->digest;
     for(j = 0; j < digest_values->count; j ++){
-        digest_value = data;
+        digest_value = (void *)data;
         bufsize = tpm20_get_hash_buffersize(digest_value->hashAlg);
         if(bufsize <= 0){//出现不支持的算法
             return -1;
@@ -402,20 +407,71 @@ static int tpm2_ascii_bios_measurements_show(struct seq_file *m, void *v)
 
 	/* 4th: eventname <= max + \'0' delimiter */
 	seq_printf(m, " %s\n", eventname);
-    seq_printf(m, "\n");
 	kfree(eventname);
 	return 0;
 }
+/* returns pointer to start of pos. entry of tcg log */
+static void *tpm2_ascii_bios_measurements_start(struct seq_file *m, loff_t *pos)
+{
+	loff_t i, j;
+	u32 bufsize;
+	struct tpm_bios_log *log = m->private;
+	void *addr = log->bios_event_log;
+	void *limit = log->bios_event_log_end;
+	tpm2_event *event;
+	tpm2_digest_values *digest_values;
+	tpm2_digest_value *digest_value;
+    //跳过seabios给tpm2.0日志添加的头部，该头部的结构和tcpa的日志记录格式一样
+    event = addr;
+    if ((addr + sizeof(struct tcpa_event)) + ((struct tcpa_event *)event)->event_size < limit) {
+        if (((struct tcpa_event *)event)->event_type == 0 && ((struct tcpa_event *)event)->event_size == 0)
+            return NULL;
+        addr += sizeof(struct tcpa_event) + ((struct tcpa_event *)event)->event_size;
+    }
+
+	/* read over *pos measurements */
+	for (i = 0; i < *pos + 1; i++){//i=1是越过第一条记录; i<*pos+1是为了多检查一条记录，以保证用户获取的当前记录是有效的
+		event = addr;
+		if ((addr + sizeof(tpm2_event) + sizeof(tpm2_digest_values)) < limit){
+            digest_values = event->digest;
+            addr += sizeof(tpm2_event) + sizeof(tpm2_digest_values);
+            for(j = 0; j < digest_values->count && (addr + sizeof(tpm2_digest_value)) < limit; j ++){
+                digest_value = addr;
+                addr += sizeof(tpm2_digest_value);
+                bufsize = tpm20_get_hash_buffersize(digest_value->hashAlg);
+                if(bufsize <= 0){//出现不支持的算法
+                    return NULL;
+                }
+                if(addr + bufsize < limit){
+                    addr += bufsize;
+                }else{
+                    printk("log is small!\n");
+                    return NULL;
+                }
+            }
+            if (event->event_type == 0 && ((tpm2_tail *)addr)->eventdatasize == 0)
+				return NULL;
+            addr += sizeof(tpm2_tail) + ((tpm2_tail *)addr)->eventdatasize;
+            if(addr >= limit){
+                printk("log is small!\n");
+                return NULL;
+            }
+		}
+	}
+    addr = event;//退回到当前记录的最开始
+
+	return addr;
+}
 
 static const struct seq_operations tpm2_ascii_b_measurments_seqops = {
-	.start = tpm2_bios_measurements_start,
+	.start = tpm2_ascii_bios_measurements_start,
 	.next = tpm2_bios_measurements_next,
 	.stop = tpm2_bios_measurements_stop,
 	.show = tpm2_ascii_bios_measurements_show,
 };
 
 static const struct seq_operations tpm2_binary_b_measurments_seqops = {
-	.start = tpm2_bios_measurements_start,
+	.start = tpm2_binary_bios_measurements_start,
 	.next = tpm2_bios_measurements_next,
 	.stop = tpm2_bios_measurements_stop,
 	.show = tpm2_binary_bios_measurements_show,

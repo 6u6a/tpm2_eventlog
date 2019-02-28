@@ -363,8 +363,8 @@ static int get_event_name(char *dest, struct tpm2_tail *event,
 		break;
 	}
 
-	return snprintf(dest, MAX_TEXT_EVENT, "[%.*s%.*s]",
-			n_len, name, d_len, data);
+	return snprintf(dest, MAX_TEXT_EVENT, "[%.*s%.*s] [%.*s]",
+			n_len, name, d_len, data, event->eventdatasize, event_entry);
 
 }
 
@@ -406,7 +406,7 @@ static int tpm2_ascii_bios_measurements_show(struct seq_file *m, void *v)
 	len += get_event_name(eventname, (void *)p, event_entry, event->event_type);
 
 	/* 4th: eventname <= max + \'0' delimiter */
-	seq_printf(m, " %s\n", eventname);
+	seq_printf(m, "%s\n", eventname);
 	kfree(eventname);
 	return 0;
 }
